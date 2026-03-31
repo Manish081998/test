@@ -194,18 +194,29 @@ export class SetupComponent {
   done     = signal(false);
   steps    = signal<Step[]>([]);
 
+  // Effective token: prefer parent-supplied, fall back to server config
+  private serverToken = signal('');
+  get effectiveToken(): string { return this.token || this.serverToken(); }
+
   get urlError(): string {
     if (!this.repoUrl) return '';
     return this.gh.parseRepoUrl(this.repoUrl) ? '' : 'Invalid GitHub URL';
   }
 
   get canRun(): boolean {
-    return !!this.repoUrl && !this.urlError && !!this.token;
+    return !!this.repoUrl && !this.urlError && !!this.effectiveToken;
   }
 
   hasError = computed(() => this.steps().some(s => s.status === 'error'));
 
-  constructor(private gh: GithubService) {}
+  constructor(private gh: GithubService) {
+    // Load token directly from server config so button works even before
+    // the parent app finishes its own fetch
+    fetch('http://localhost:3001/api/config')
+      .then(r => r.json())
+      .then(cfg => { if (cfg.githubToken) this.serverToken.set(cfg.githubToken); })
+      .catch(() => {});
+  }
 
   async runSetup() {
     const parsed = this.gh.parseRepoUrl(this.repoUrl);
@@ -230,7 +241,7 @@ export class SetupComponent {
     try {
       // Step 0 — verify repo
       setStep(0, 'running');
-      const repoInfo = await this.gh.getRepo(owner, repo, this.token).toPromise();
+      const repoInfo = await this.gh.getRepo(owner, repo, this.effectiveToken).toPromise();
       setStep(0, 'done', `${repoInfo!.full_name} · ${repoInfo!.visibility}`);
 
       // Step 1 — create branches if repo is empty
@@ -238,17 +249,17 @@ export class SetupComponent {
       let mainSha: string | null = null;
 
       // Try to get main branch SHA
-      mainSha = await this.gh.getBranchSha(owner, repo, 'main', this.token).toPromise() ?? null;
+      mainSha = await this.gh.getBranchSha(owner, repo, 'main', this.effectiveToken).toPromise() ?? null;
       if (!mainSha) {
         // Repo is empty — create initial commit which establishes main
-        const created = await this.gh.createInitialCommit(owner, repo, this.token).toPromise();
+        const created = await this.gh.createInitialCommit(owner, repo, this.effectiveToken).toPromise();
         mainSha = created!.commit.sha;
       }
 
       // Create development branch if it doesn't exist
-      const devRef = await this.gh.getBranchSha(owner, repo, 'development', this.token).toPromise();
+      const devRef = await this.gh.getBranchSha(owner, repo, 'development', this.effectiveToken).toPromise();
       if (!devRef) {
-        await this.gh.createBranch(owner, repo, 'development', mainSha!, this.token).toPromise();
+        await this.gh.createBranch(owner, repo, 'development', mainSha!, this.effectiveToken).toPromise();
         setStep(1, 'done', 'main ✓  development ✓  (created)');
       } else {
         setStep(1, 'done', 'main ✓  development ✓  (already existed)');
@@ -256,24 +267,24 @@ export class SetupComponent {
 
       // Step 2 — push CI workflow file so the "Build" check can run
       setStep(2, 'running');
-      await this.gh.createWorkflowFile(owner, repo, this.token).toPromise();
+      await this.gh.createWorkflowFile(owner, repo, this.effectiveToken).toPromise();
       setStep(2, 'done', '.github/workflows/build.yml ✓');
 
       // Step 3 — enable auto-merge
       setStep(3, 'running');
-      await this.gh.enableAutoMerge(owner, repo, this.token).toPromise();
+      await this.gh.enableAutoMerge(owner, repo, this.effectiveToken).toPromise();
       setStep(3, 'done', 'allow_auto_merge: true · allow_merge_commit: true');
 
       // Step 4 — branch protection on main
       setStep(4, 'running');
-      await this.gh.setProtection(owner, repo, 'main', this.devType() === 'team', this.token).toPromise();
+      await this.gh.setProtection(owner, repo, 'main', this.devType() === 'team', this.effectiveToken).toPromise();
       setStep(4, 'done', this.devType() === 'solo'
         ? 'CI Build required · No approval (sole developer)'
         : 'CI Build required · 1 approval required');
 
       // Step 5 — verify
       setStep(5, 'running');
-      const final = await this.gh.getRepo(owner, repo, this.token).toPromise();
+      const final = await this.gh.getRepo(owner, repo, this.effectiveToken).toPromise();
       setStep(5, 'done', `auto_merge: ${final!.allow_auto_merge} · default: ${final!.default_branch}`);
 
     } catch (e: any) {
