@@ -8,51 +8,50 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
+// ── Load server config (contains GitHub token) ───────────────────────────────
+let serverConfig = {};
+try {
+  const cfgPath = path.join(__dirname, 'server-config.json');
+  serverConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  console.log('✓ server-config.json loaded' + (serverConfig.githubToken ? ' (token present)' : ' (no token)'));
+} catch {
+  console.warn('⚠ server-config.json not found — create it with { "githubToken": "ghp_..." }');
+}
+
+// Returns git -c args that inject the token via http.extraheader.
+// This bypasses Windows Credential Manager completely.
+function authArgs(token) {
+  if (!token) return ['-c', 'credential.helper='];
+  const b64 = Buffer.from(`oauth2:${token}`).toString('base64');
+  return [
+    '-c', 'credential.helper=',
+    '-c', `http.https://github.com/.extraheader=Authorization: Basic ${b64}`,
+  ];
+}
+
 const STEPS = [
   { id: 'checkout', label: 'Checkout Branch',   args: (b)    => ['checkout', b]       },
   { id: 'add',      label: 'Stage All Changes',  args: ()     => ['add', '.']          },
   { id: 'status',   label: 'Show Status',        args: ()     => ['status']            },
   { id: 'commit',   label: 'Commit Changes',     args: (_, m) => ['commit', '-m', m]  },
-  { id: 'push',     label: 'Push to Remote',     args: (b)    => ['push', 'origin', b]},
+  { id: 'push',     label: 'Push to Remote',     args: (b)    => ['push', '-u', 'origin', b, '--force'] },
 ];
 
-// Run a single git command; resolves true on success, false on failure.
-// Streams stdout/stderr as plain terminal events (no step binding).
-function runGitCmd(args, cwd, send, extraEnv = {}) {
+// Run a git command, streaming output. Auth args injected when token provided.
+function runGitCmd(args, cwd, send, token = null) {
   return new Promise((resolve) => {
-    // -c credential.helper= disables Windows Credential Manager so URL-embedded
-    // tokens (https://oauth2:TOKEN@github.com/...) are used directly.
-    const proc = spawn('git', ['-c', 'credential.helper=', ...args], { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...extraEnv } });
+    const auth = token ? authArgs(token) : ['-c', 'credential.helper='];
+    const proc = spawn('git', [...auth, ...args], {
+      cwd,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
     proc.stdout.on('data', d => send({ type: 'stdout', text: d.toString() }));
     proc.stderr.on('data', d => send({ type: 'stderr', text: d.toString() }));
     proc.on('close', code => resolve(code === 0));
   });
 }
 
-// Temporarily set origin to the authenticated URL, run an async action, then restore.
-// Uses -c credential.helper= to bypass Windows Credential Manager so the
-// token embedded in the URL is used directly for authentication.
-async function withAuthRemote(folder, repoUrl, token, action) {
-  const authUrl = (token && repoUrl) ? repoUrl.replace('https://', `https://oauth2:${token}@`) : null;
-  if (authUrl) {
-    await new Promise(resolve => {
-      const p = spawn('git', ['-c', 'credential.helper=', 'remote', 'set-url', 'origin', authUrl], { cwd: folder });
-      p.on('close', resolve);
-    });
-  }
-  try {
-    return await action();
-  } finally {
-    if (authUrl && repoUrl) {
-      await new Promise(resolve => {
-        const p = spawn('git', ['remote', 'set-url', 'origin', repoUrl], { cwd: folder });
-        p.on('close', resolve);
-      });
-    }
-  }
-}
-
-// Resolves the string value of a git command (e.g. remote get-url), or null on failure.
+// Resolves the stdout string of a git command, or null on failure.
 function gitOutput(args, cwd) {
   return new Promise((resolve) => {
     const proc = spawn('git', args, { cwd });
@@ -62,24 +61,30 @@ function gitOutput(args, cwd) {
   });
 }
 
-// Ensure remote 'origin' points to repoUrl; add it if missing.
+// Ensure remote 'origin' points to repoUrl (clean URL, no token embedded).
 async function ensureRemote(folder, repoUrl, send) {
   const current = await gitOutput(['remote', 'get-url', 'origin'], folder);
   if (current === null) {
     send({ type: 'stdout', text: `  → Adding remote origin: ${repoUrl}\n` });
-    return runGitCmd(['remote', 'add', 'origin', repoUrl], folder, send);
+    return new Promise(resolve => {
+      const p = spawn('git', ['remote', 'add', 'origin', repoUrl], { cwd: folder });
+      p.on('close', code => resolve(code === 0));
+    });
   }
-  return true; // already configured
+  // If URL changed, update it
+  if (current !== repoUrl) {
+    await new Promise(resolve => {
+      const p = spawn('git', ['remote', 'set-url', 'origin', repoUrl], { cwd: folder });
+      p.on('close', resolve);
+    });
+  }
+  return true;
 }
 
-// Check whether folder is a git repo (.git directory exists).
 function isGitRepo(folder) {
-  try {
-    return fs.existsSync(path.join(folder, '.git'));
-  } catch { return false; }
+  try { return fs.existsSync(path.join(folder, '.git')); } catch { return false; }
 }
 
-// Check whether the repo has at least one commit.
 function hasCommits(folder) {
   return new Promise((resolve) => {
     const proc = spawn('git', ['log', '--oneline', '-1'], { cwd: folder });
@@ -89,7 +94,6 @@ function hasCommits(folder) {
   });
 }
 
-// Check whether a local branch exists.
 function branchExists(branch, folder) {
   return new Promise((resolve) => {
     const proc = spawn('git', ['branch', '--list', branch], { cwd: folder });
@@ -99,7 +103,6 @@ function branchExists(branch, folder) {
   });
 }
 
-// Check whether a remote branch exists (after fetch).
 function remoteBranchExists(branch, folder) {
   return new Promise((resolve) => {
     const proc = spawn('git', ['branch', '-r', '--list', `origin/${branch}`], { cwd: folder });
@@ -109,28 +112,22 @@ function remoteBranchExists(branch, folder) {
   });
 }
 
-// Sync local repo with remote branches that already exist (e.g. created by Setup tab).
-// Returns true on success.
-async function syncWithRemote(folder, token, repoUrl, send) {
+// Sync a fresh local repo with remote branches already created by the Setup tab.
+async function syncWithRemote(folder, token, send) {
   send({ type: 'stdout', text: '⚙ Remote branches detected — syncing local repo...\n' });
-
-  // Fetch via named remote (populates origin/* refs correctly)
   send({ type: 'stdout', text: '  → git fetch origin\n' });
-  await withAuthRemote(folder, repoUrl, token, () => runGitCmd(['fetch', 'origin'], folder, send));
+  await runGitCmd(['fetch', 'origin'], folder, send, token);
 
-  // Create/reset local main to track origin/main
   const localMainExists = await branchExists('main', folder);
   if (!localMainExists) {
     send({ type: 'stdout', text: '  → Create local main tracking origin/main\n' });
     const ok = await runGitCmd(['checkout', '-b', 'main', 'origin/main'], folder, send);
     if (!ok) return false;
   } else {
-    send({ type: 'stdout', text: '  → Reset local main to origin/main\n' });
+    send({ type: 'stdout', text: '  → Checkout main\n' });
     await runGitCmd(['checkout', 'main'], folder, send);
-    await runGitCmd(['reset', '--hard', 'origin/main'], folder, send);
   }
 
-  // Create/sync local development to track origin/development if it exists remotely
   const remoteDevExists = await remoteBranchExists('development', folder);
   const localDevExists  = await branchExists('development', folder);
   if (remoteDevExists && !localDevExists) {
@@ -147,49 +144,45 @@ async function syncWithRemote(folder, token, repoUrl, send) {
   return true;
 }
 
-// Full init for a truly empty remote: initial commit on main, push, create development.
-async function initFreshRepo(folder, message, token, repoUrl, send) {
+// Init a truly empty remote: commit → push main → create development.
+async function initFreshRepo(folder, message, token, send) {
   send({ type: 'stdout', text: '⚙ Empty repository — creating initial commit + branches...\n' });
 
-  const plainSteps = [
-    { label: 'Stage all files',           args: ['add', '.']                       },
-    { label: 'Create initial commit',     args: ['commit', '-m', message]          },
-    { label: 'Rename branch → main',      args: ['branch', '-M', 'main']          },
+  const steps = [
+    { label: 'Stage all files',       args: ['add', '.']             },
+    { label: 'Create initial commit', args: ['commit', '-m', message]},
+    { label: 'Rename branch → main',  args: ['branch', '-M', 'main'] },
   ];
 
-  for (const step of plainSteps) {
+  for (const step of steps) {
     send({ type: 'stdout', text: `  → ${step.label}\n` });
     const ok = await runGitCmd(step.args, folder, send);
-    if (!ok) {
-      send({ type: 'stdout', text: `  ✗ Failed at: ${step.label}\n` });
-      return false;
-    }
+    if (!ok) { send({ type: 'stdout', text: `  ✗ Failed: ${step.label}\n` }); return false; }
   }
 
-  // Push main using authenticated remote
   send({ type: 'stdout', text: '  → Push main to remote\n' });
-  const pushOk = await withAuthRemote(folder, repoUrl, token, () =>
-    runGitCmd(['push', '-u', 'origin', 'main'], folder, send)
-  );
-  if (!pushOk) {
-    send({ type: 'stdout', text: '  ✗ Failed at: Push main to remote\n' });
-    return false;
-  }
+  const pushOk = await runGitCmd(['push', '-u', 'origin', 'main'], folder, send, token);
+  if (!pushOk) { send({ type: 'stdout', text: '  ✗ Failed: Push main\n' }); return false; }
 
-  // Create development branch
   send({ type: 'stdout', text: '  → Create development branch\n' });
   const devOk = await runGitCmd(['checkout', '-b', 'development'], folder, send);
-  if (!devOk) {
-    send({ type: 'stdout', text: '  ✗ Failed at: Create development branch\n' });
-    return false;
-  }
+  if (!devOk) { send({ type: 'stdout', text: '  ✗ Failed: Create development\n' }); return false; }
 
   send({ type: 'stdout', text: '✓ Branches initialised (main + development)\n\n' });
   return true;
 }
 
+// ── /api/config — returns token to frontend (localhost only) ─────────────────
+app.get('/api/config', (_, res) => {
+  res.json({ githubToken: serverConfig.githubToken || '' });
+});
+
+// ── /api/git/push ─────────────────────────────────────────────────────────────
 app.post('/api/git/push', async (req, res) => {
-  const { folder, branch, message, repoUrl, token } = req.body;
+  const { folder, branch, message, repoUrl } = req.body;
+  // Token comes from server config, NOT from the request body
+  const token = serverConfig.githubToken || '';
+
   if (!folder || !branch || !message) {
     return res.status(400).json({ error: 'folder, branch and message are required' });
   }
@@ -203,102 +196,88 @@ app.post('/api/git/push', async (req, res) => {
     try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
   };
 
-  // ── 0. Ensure folder is a git repo (run git init if needed) ─────────────
+  if (!token) {
+    send({ type: 'fatal', id: 'checkout', text: 'No GitHub token configured — add githubToken to server-config.json' });
+    res.end(); return;
+  }
+
+  // ── 0. git init if needed ────────────────────────────────────────────────
   if (!isGitRepo(folder)) {
     send({ type: 'stdout', text: '  → git init (no .git found)\n' });
-    const initOk = await runGitCmd(['init'], folder, send);
-    if (!initOk) {
-      send({ type: 'fatal', id: 'checkout', text: 'git init failed — check that the folder exists and git is installed' });
-      res.end();
-      return;
+    const ok = await runGitCmd(['init'], folder, send);
+    if (!ok) {
+      send({ type: 'fatal', id: 'checkout', text: 'git init failed' });
+      res.end(); return;
     }
   }
 
-  // ── 1. Ensure remote origin is configured ────────────────────────────────
+  // ── 1. Ensure remote origin ──────────────────────────────────────────────
   if (repoUrl) {
-    const remoteOk = await ensureRemote(folder, repoUrl, send);
-    if (!remoteOk) {
+    const ok = await ensureRemote(folder, repoUrl, send);
+    if (!ok) {
       send({ type: 'fatal', id: 'checkout', text: 'Failed to configure remote origin' });
-      res.end();
-      return;
+      res.end(); return;
     }
   }
 
-  // ── 2. Branch setup: sync with remote if it has history, else init fresh ──
+  // ── 2. Fetch so we know remote state ────────────────────────────────────
+  await runGitCmd(['fetch', 'origin'], folder, send, token);
+
+  // ── 3. Branch setup for repos with no local commits ─────────────────────
   const repoHasCommits = await hasCommits(folder);
   if (!repoHasCommits) {
-    // Fetch via named remote so origin/* refs are populated
-    await withAuthRemote(folder, repoUrl, token, () => runGitCmd(['fetch', 'origin'], folder, send));
     const remoteHasMain = await remoteBranchExists('main', folder);
     if (remoteHasMain) {
-      const syncOk = await syncWithRemote(folder, token, repoUrl, send);
-      if (!syncOk) {
+      const ok = await syncWithRemote(folder, token, send);
+      if (!ok) {
         send({ type: 'fatal', id: 'checkout', text: 'Failed to sync with remote branches' });
-        res.end();
-        return;
+        res.end(); return;
       }
     } else {
-      const initOk = await initFreshRepo(folder, message, token, repoUrl, send);
-      if (!initOk) {
+      const ok = await initFreshRepo(folder, message, token, send);
+      if (!ok) {
         send({ type: 'fatal', id: 'checkout', text: 'Failed to initialise repository branches' });
-        res.end();
-        return;
+        res.end(); return;
       }
     }
   }
 
-  // ── 3. Source branch guard: create it if it doesn't exist yet ───────────
+  // ── 4. Source branch guard ───────────────────────────────────────────────
   const sourceBranchExists = await branchExists(branch, folder);
   if (!sourceBranchExists) {
     send({ type: 'stdout', text: `  → Branch '${branch}' not found — creating it\n` });
-    const created = await runGitCmd(['checkout', '-b', branch], folder, send);
-    if (!created) {
+    const ok = await runGitCmd(['checkout', '-b', branch], folder, send);
+    if (!ok) {
       send({ type: 'fatal', id: 'checkout', text: `Failed to create branch: ${branch}` });
-      res.end();
-      return;
+      res.end(); return;
     }
   }
 
-  // ── Normal git push steps (async loop) ───────────────────────────────────
+  // ── 5. Git steps ─────────────────────────────────────────────────────────
   for (const step of STEPS) {
     const args = step.args(branch, message);
     send({ type: 'step-start', id: step.id, label: step.label, cmd: `git ${args.join(' ')}` });
 
     let output = '';
-    let ok;
+    const isAuthStep = step.id === 'push';
 
-    if (step.id === 'push') {
-      // Fetch first so origin/* tracking refs exist, then force-push local code.
-      // --force is used because local code is always authoritative in this tool
-      // (remote may have orphaned commits from Setup branch creation).
-      await withAuthRemote(folder, repoUrl, token, () =>
-        runGitCmd(['fetch', 'origin'], folder, send)
-      );
-      ok = await withAuthRemote(folder, repoUrl, token, () =>
-        new Promise(resolve => {
-          const proc = spawn('git', ['-c', 'credential.helper=', 'push', '-u', 'origin', branch, '--force'],
-            { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
-          proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
-          proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
-          proc.on('close', code => resolve(code === 0));
-        })
-      );
-    } else {
-      ok = await new Promise(resolve => {
-        const proc = spawn('git', ['-c', 'credential.helper=', ...args], { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
-        proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
-        proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
-        proc.on('close', code => resolve(code === 0));
+    const ok = await new Promise(resolve => {
+      const auth = isAuthStep ? authArgs(token) : ['-c', 'credential.helper='];
+      const proc = spawn('git', [...auth, ...args], {
+        cwd: folder,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       });
-    }
+      proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
+      proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
+      proc.on('close', code => resolve(code === 0));
+    });
 
     const noop = step.id === 'commit' && (output.includes('nothing to commit') || output.includes('nothing added'));
     const stepOk = ok || noop;
     send({ type: 'step-end', id: step.id, ok: stepOk, noop });
     if (!stepOk) {
-      send({ type: 'fatal', id: step.id, text: output || `git ${args.join(' ')} failed` });
-      res.end();
-      return;
+      send({ type: 'fatal', id: step.id, text: output.trim() || `git ${args.join(' ')} failed` });
+      res.end(); return;
     }
   }
 
@@ -306,7 +285,7 @@ app.post('/api/git/push', async (req, res) => {
   res.end();
 });
 
-// dotnet build — auto-detects project type; skips build for non-.NET folders
+// ── /api/dotnet/build ─────────────────────────────────────────────────────────
 app.post('/api/dotnet/build', (req, res) => {
   const { folder } = req.body;
   if (!folder) return res.status(400).json({ error: 'folder is required' });
@@ -320,37 +299,32 @@ app.post('/api/dotnet/build', (req, res) => {
     try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
   };
 
-  // Detect whether this is a .NET project
   let hasDotnet = false;
   try {
     const entries = fs.readdirSync(folder);
     hasDotnet = entries.some(f => f.endsWith('.sln') || f.endsWith('.csproj'));
   } catch (e) {
     send({ type: 'fatal', text: `Cannot read folder: ${e.message}` });
-    res.end();
-    return;
+    res.end(); return;
   }
 
   if (!hasDotnet) {
     send({ type: 'stdout', text: 'No .sln / .csproj found — skipping dotnet build (Angular/Node project detected)\n' });
     send({ type: 'done', ok: true });
-    res.end();
-    return;
+    res.end(); return;
   }
 
   const proc = spawn('dotnet', ['build'], { cwd: folder });
-
   proc.stdout.on('data', d => send({ type: 'stdout', text: d.toString() }));
   proc.stderr.on('data', d => send({ type: 'stderr', text: d.toString() }));
-
   proc.on('close', code => {
-    if (code === 0) send({ type: 'done',  ok: true });
+    if (code === 0) send({ type: 'done', ok: true });
     else            send({ type: 'fatal', text: `dotnet build failed — exit code ${code}` });
     res.end();
   });
 });
 
-// Health check
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
 app.listen(3001, () => console.log('Git server → http://localhost:3001'));

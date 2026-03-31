@@ -40,3 +40,6 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Local server config (contains GitHub token — never commit this)
+server-config.json

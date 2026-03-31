@@ -69,7 +69,7 @@ function ts(): string {
       </div>
       <div class="btn-group">
         <button class="btn-primary"
-          [disabled]="anyRunning() || !repoUrl || !token() || !solutionFolder || !description"
+          [disabled]="anyRunning() || !repoUrl || !solutionFolder || !description"
           (click)="runAll()">
           @if (anyRunning()) { <span class="spin">⟳</span> Running… }
           @else {
@@ -714,7 +714,7 @@ export class ShipComponent {
       response = await fetch('http://localhost:3001/api/git/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: this.solutionFolder, branch: this.headBranch, message, repoUrl: this.repoUrl, token: this.token() }),
+        body: JSON.stringify({ folder: this.solutionFolder, branch: this.headBranch, message, repoUrl: this.repoUrl }),
       });
     } catch {
       this.addTerminal('tl-info', '✗ Cannot reach git server — make sure you started with: npm start');
