@@ -265,12 +265,15 @@ app.post('/api/git/push', async (req, res) => {
     let ok;
 
     if (step.id === 'push') {
-      // Use withAuthRemote + --force-with-lease so local code always wins.
-      // --force-with-lease is safe: it only force-pushes if no one else pushed
-      // since our last fetch, preventing accidental overwrites of others' work.
+      // Fetch first so origin/* tracking refs exist, then force-push local code.
+      // --force is used because local code is always authoritative in this tool
+      // (remote may have orphaned commits from Setup branch creation).
+      await withAuthRemote(folder, repoUrl, token, () =>
+        runGitCmd(['fetch', 'origin'], folder, send)
+      );
       ok = await withAuthRemote(folder, repoUrl, token, () =>
         new Promise(resolve => {
-          const proc = spawn('git', ['push', '-u', 'origin', branch, '--force-with-lease'],
+          const proc = spawn('git', ['push', '-u', 'origin', branch, '--force'],
             { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
           proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
           proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
@@ -290,7 +293,7 @@ app.post('/api/git/push', async (req, res) => {
     const stepOk = ok || noop;
     send({ type: 'step-end', id: step.id, ok: stepOk, noop });
     if (!stepOk) {
-      send({ type: 'fatal', id: step.id, text: `Exit code — see terminal for details` });
+      send({ type: 'fatal', id: step.id, text: output || `git ${args.join(' ')} failed` });
       res.end();
       return;
     }
