@@ -20,7 +20,9 @@ const STEPS = [
 // Streams stdout/stderr as plain terminal events (no step binding).
 function runGitCmd(args, cwd, send, extraEnv = {}) {
   return new Promise((resolve) => {
-    const proc = spawn('git', args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...extraEnv } });
+    // -c credential.helper= disables Windows Credential Manager so URL-embedded
+    // tokens (https://oauth2:TOKEN@github.com/...) are used directly.
+    const proc = spawn('git', ['-c', 'credential.helper=', ...args], { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...extraEnv } });
     proc.stdout.on('data', d => send({ type: 'stdout', text: d.toString() }));
     proc.stderr.on('data', d => send({ type: 'stderr', text: d.toString() }));
     proc.on('close', code => resolve(code === 0));
@@ -28,12 +30,13 @@ function runGitCmd(args, cwd, send, extraEnv = {}) {
 }
 
 // Temporarily set origin to the authenticated URL, run an async action, then restore.
-// This ensures 'git fetch/push origin' works correctly and populates origin/* refs.
+// Uses -c credential.helper= to bypass Windows Credential Manager so the
+// token embedded in the URL is used directly for authentication.
 async function withAuthRemote(folder, repoUrl, token, action) {
   const authUrl = (token && repoUrl) ? repoUrl.replace('https://', `https://oauth2:${token}@`) : null;
   if (authUrl) {
     await new Promise(resolve => {
-      const p = spawn('git', ['remote', 'set-url', 'origin', authUrl], { cwd: folder });
+      const p = spawn('git', ['-c', 'credential.helper=', 'remote', 'set-url', 'origin', authUrl], { cwd: folder });
       p.on('close', resolve);
     });
   }
@@ -273,7 +276,7 @@ app.post('/api/git/push', async (req, res) => {
       );
       ok = await withAuthRemote(folder, repoUrl, token, () =>
         new Promise(resolve => {
-          const proc = spawn('git', ['push', '-u', 'origin', branch, '--force'],
+          const proc = spawn('git', ['-c', 'credential.helper=', 'push', '-u', 'origin', branch, '--force'],
             { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
           proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
           proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
@@ -282,7 +285,7 @@ app.post('/api/git/push', async (req, res) => {
       );
     } else {
       ok = await new Promise(resolve => {
-        const proc = spawn('git', args, { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+        const proc = spawn('git', ['-c', 'credential.helper=', ...args], { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
         proc.stdout.on('data', d => { const t = d.toString(); output += t; send({ type: 'stdout', id: step.id, text: t }); });
         proc.stderr.on('data', d => { const t = d.toString(); output += t; send({ type: 'stderr', id: step.id, text: t }); });
         proc.on('close', code => resolve(code === 0));
