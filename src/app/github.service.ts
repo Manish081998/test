@@ -136,6 +136,38 @@ export class GithubService {
     );
   }
 
+  // Pushes .github/workflows/build.yml so the required "Build" status check runs on PRs.
+  createWorkflowFile(owner: string, repo: string, token: string): Observable<any> {
+    const yaml = [
+      'name: CI',
+      '',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '  push:',
+      '    branches: [development]',
+      '',
+      'jobs:',
+      '  Build:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - uses: actions/checkout@v4',
+      '      - uses: actions/setup-node@v4',
+      '        with:',
+      "          node-version: '20'",
+      '      - name: Install dependencies',
+      '        run: npm ci --if-present',
+      '      - name: Build',
+      '        run: npm run build --if-present',
+    ].join('\n');
+    const content = btoa(unescape(encodeURIComponent(yaml)));
+    return this.http.put(
+      `${BASE}/repos/${owner}/${repo}/contents/.github/workflows/build.yml`,
+      { message: 'ci: add Build workflow for branch protection', content },
+      { headers: this.headers(token) }
+    ).pipe(catchError(() => of(null))); // ignore if file already exists
+  }
+
   // Creates a new branch pointing at the given SHA.
   createBranch(owner: string, repo: string, branch: string, sha: string, token: string): Observable<any> {
     return this.http.post(

@@ -215,11 +215,12 @@ export class SetupComponent {
     this.running.set(true);
     this.done.set(false);
     this.steps.set([
-      { label: 'Verifying repository access',        status: 'idle' },
+      { label: 'Verifying repository access',          status: 'idle' },
       { label: 'Creating main & development branches', status: 'idle' },
-      { label: 'Enabling auto-merge on repository',  status: 'idle' },
-      { label: 'Configuring branch protection',      status: 'idle' },
-      { label: 'Verifying final configuration',      status: 'idle' },
+      { label: 'Adding CI workflow (Build check)',     status: 'idle' },
+      { label: 'Enabling auto-merge on repository',   status: 'idle' },
+      { label: 'Configuring branch protection',       status: 'idle' },
+      { label: 'Verifying final configuration',       status: 'idle' },
     ]);
 
     const setStep = (i: number, status: Step['status'], detail?: string) => {
@@ -253,22 +254,27 @@ export class SetupComponent {
         setStep(1, 'done', 'main ✓  development ✓  (already existed)');
       }
 
-      // Step 2 — enable auto-merge
+      // Step 2 — push CI workflow file so the "Build" check can run
       setStep(2, 'running');
-      await this.gh.enableAutoMerge(owner, repo, this.token).toPromise();
-      setStep(2, 'done', 'allow_auto_merge: true · allow_merge_commit: true');
+      await this.gh.createWorkflowFile(owner, repo, this.token).toPromise();
+      setStep(2, 'done', '.github/workflows/build.yml ✓');
 
-      // Step 3 — branch protection on main
+      // Step 3 — enable auto-merge
       setStep(3, 'running');
+      await this.gh.enableAutoMerge(owner, repo, this.token).toPromise();
+      setStep(3, 'done', 'allow_auto_merge: true · allow_merge_commit: true');
+
+      // Step 4 — branch protection on main
+      setStep(4, 'running');
       await this.gh.setProtection(owner, repo, 'main', this.devType() === 'team', this.token).toPromise();
-      setStep(3, 'done', this.devType() === 'solo'
+      setStep(4, 'done', this.devType() === 'solo'
         ? 'CI Build required · No approval (sole developer)'
         : 'CI Build required · 1 approval required');
 
-      // Step 4 — verify
-      setStep(4, 'running');
+      // Step 5 — verify
+      setStep(5, 'running');
       const final = await this.gh.getRepo(owner, repo, this.token).toPromise();
-      setStep(4, 'done', `auto_merge: ${final!.allow_auto_merge} · default: ${final!.default_branch}`);
+      setStep(5, 'done', `auto_merge: ${final!.allow_auto_merge} · default: ${final!.default_branch}`);
 
     } catch (e: any) {
       const idx = this.steps().findIndex(s => s.status === 'running');
