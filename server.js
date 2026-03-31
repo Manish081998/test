@@ -253,7 +253,22 @@ app.post('/api/git/push', async (req, res) => {
     }
   }
 
-  // ── 5. Git steps ─────────────────────────────────────────────────────────
+  // ── 5. Ensure source branch shares history with main ────────────────────
+  // GitHub refuses to create a PR if branches have no common ancestor.
+  // Fix: checkout source branch, then merge origin/main with --allow-unrelated-histories
+  // using -X ours so our project files always win over any conflicts (e.g. README.md).
+  await runGitCmd(['checkout', branch], folder, send);
+  const remoteMainExists = await remoteBranchExists('main', folder);
+  if (remoteMainExists) {
+    send({ type: 'stdout', text: `  → Merging origin/main into ${branch} to connect git histories...\n` });
+    await runGitCmd(
+      ['merge', 'origin/main', '--allow-unrelated-histories', '-X', 'ours', '--no-edit'],
+      folder, send
+    );
+    send({ type: 'stdout', text: '  ✓ Histories connected — PR creation will succeed\n' });
+  }
+
+  // ── 6. Git steps ─────────────────────────────────────────────────────────
   for (const step of STEPS) {
     const args = step.args(branch, message);
     send({ type: 'step-start', id: step.id, label: step.label, cmd: `git ${args.join(' ')}` });
