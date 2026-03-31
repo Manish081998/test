@@ -89,7 +89,9 @@ export class GithubService {
 
   setProtection(owner: string, repo: string, branch: string, requireApproval: boolean, token: string): Observable<any> {
     const body: any = {
-      required_status_checks: { strict: false, contexts: ['CI / Build'] },
+      // CI workflow runs but does NOT block merge — avoids "Expected" deadlock
+      // on fresh repos where the check name has never been reported yet.
+      required_status_checks: null,
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
