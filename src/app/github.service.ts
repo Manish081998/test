@@ -89,7 +89,7 @@ export class GithubService {
 
   setProtection(owner: string, repo: string, branch: string, requireApproval: boolean, token: string): Observable<any> {
     const body: any = {
-      required_status_checks: { strict: false, contexts: ['Build'] },
+      required_status_checks: { strict: false, contexts: ['CI / Build'] },
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
@@ -137,6 +137,7 @@ export class GithubService {
   }
 
   // Pushes .github/workflows/build.yml so the required "Build" status check runs on PRs.
+  // Auto-detects project type: runs dotnet build for .NET, npm build for Node/Angular.
   createWorkflowFile(owner: string, repo: string, token: string): Observable<any> {
     const yaml = [
       'name: CI',
@@ -152,13 +153,24 @@ export class GithubService {
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - uses: actions/checkout@v4',
+      '      - uses: actions/setup-dotnet@v4',
+      '        with:',
+      "          dotnet-version: '8.x'",
       '      - uses: actions/setup-node@v4',
       '        with:',
       "          node-version: '20'",
-      '      - name: Install dependencies',
-      '        run: npm ci --if-present',
       '      - name: Build',
-      '        run: npm run build --if-present',
+      '        run: |',
+      '          if find . -maxdepth 4 \\( -name "*.sln" -o -name "*.csproj" \\) 2>/dev/null | grep -q .; then',
+      '            echo "Detected .NET project — running dotnet build"',
+      '            dotnet build',
+      '          elif [ -f package.json ]; then',
+      '            echo "Detected Node.js project — running npm build"',
+      '            [ -f package-lock.json ] && npm ci || npm install',
+      '            npm run build --if-present',
+      '          else',
+      '            echo "No recognizable project type found — skipping build"',
+      '          fi',
     ].join('\n');
     const content = btoa(unescape(encodeURIComponent(yaml)));
     return this.http.put(
