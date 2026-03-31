@@ -89,9 +89,7 @@ export class GithubService {
 
   setProtection(owner: string, repo: string, branch: string, requireApproval: boolean, token: string): Observable<any> {
     const body: any = {
-      // CI workflow runs but does NOT block merge — avoids "Expected" deadlock
-      // on fresh repos where the check name has never been reported yet.
-      required_status_checks: null,
+      required_status_checks: { strict: false, contexts: ['CI / Build'] },
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
@@ -179,7 +177,13 @@ export class GithubService {
       `${BASE}/repos/${owner}/${repo}/contents/.github/workflows/build.yml`,
       { message: 'ci: add Build workflow for branch protection', content },
       { headers: this.headers(token) }
-    ).pipe(catchError(() => of(null))); // ignore if file already exists
+    ).pipe(catchError((err) => {
+      // 422 = file already exists (safe to ignore)
+      if (err?.status === 422) return of(null);
+      // 403 usually means token is missing "workflow" scope
+      if (err?.status === 403) throw new Error('Token missing "workflow" scope — edit token at github.com/settings/tokens and add the workflow scope');
+      throw err;
+    }));
   }
 
   // Creates a new branch pointing at the given SHA.
