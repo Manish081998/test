@@ -89,7 +89,9 @@ export class GithubService {
 
   setProtection(owner: string, repo: string, branch: string, requireApproval: boolean, token: string): Observable<any> {
     const body: any = {
-      required_status_checks: { strict: false, contexts: ['CI / Build'] },
+      // Use `checks` (not `contexts`) so GitHub Actions Check Runs satisfy the requirement.
+      // app_id: -1 means "any GitHub Actions app" — prevents the "Expected" deadlock.
+      required_status_checks: { strict: false, contexts: [], checks: [{ context: 'CI / Build', app_id: -1 }] },
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
