@@ -91,7 +91,7 @@ export class GithubService {
     const body: any = {
       // Use `checks` (not `contexts`) so GitHub Actions Check Runs satisfy the requirement.
       // app_id: -1 means "any GitHub Actions app" — prevents the "Expected" deadlock.
-      required_status_checks: { strict: false, contexts: [], checks: [{ context: 'CI / Build', app_id: -1 }] },
+      required_status_checks: { strict: false, checks: [{ context: 'CI / Build', app_id: -1 }] },
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
