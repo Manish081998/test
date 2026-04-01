@@ -27,14 +27,14 @@
             <span class="radio-dot" [class.checked]="devType() === 'solo'"></span>
             <div>
               <strong>Sole Developer</strong>
-              <span>No approval required — CI must pass</span>
+              <span>No approval required — push directly</span>
             </div>
           </label>
           <label class="radio" [class.active]="devType() === 'team'" (click)="devType.set('team')">
             <span class="radio-dot" [class.checked]="devType() === 'team'"></span>
             <div>
               <strong>Team / Manager Reviews</strong>
-              <span>1 approval required + CI must pass</span>
+              <span>1 approval required before merging</span>
             </div>
           </label>
         </div>
@@ -82,7 +82,7 @@
       <div class="result-icon">{{ hasError() ? '✕' : '✓' }}</div>
       <div class="result-body">
         <strong>{{ hasError() ? 'Setup encountered an error' : 'Repository fully configured!' }}</strong>
-        <span>{{ hasError() ? 'Check the steps above for details.' : 'Auto-merge enabled · Branch protection set · CI workflow active' }}</span>
+        <span>{{ hasError() ? 'Check the steps above for details.' : 'Auto-merge enabled · Branch protection set · CI workflow deployed' }}</span>
       </div>
     </div>
   }

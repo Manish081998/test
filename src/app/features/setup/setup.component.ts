@@ -111,8 +111,8 @@ export class SetupComponent {
       await firstValueFrom(
         this.gh.setProtection(owner, repo, 'main', this.devType() === 'team', this.effectiveToken));
       setStep(4, 'done', this.devType() === 'solo'
-        ? 'CI Build required · No approval (sole developer)'
-        : 'CI Build required · 1 approval required');
+        ? 'No approval required (sole developer)'
+        : '1 approval required before merging');
 
       // Step 5 — verify final config
       setStep(5, 'running');

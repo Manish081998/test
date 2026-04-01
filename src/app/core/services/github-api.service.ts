@@ -107,7 +107,7 @@ export class GithubApiService {
     token: string,
   ): Observable<unknown> {
     const body = {
-      required_status_checks: { strict: false, checks: [{ context: 'CI / Build', app_id: -1 }] },
+      required_status_checks: null,
       enforce_admins: false,
       required_pull_request_reviews: requireApproval
         ? { required_approving_review_count: 1, dismiss_stale_reviews: false }
