@@ -1,13 +1,13 @@
 import {
-  withHttpTransferCache
-} from "./chunk-SOPRF3UM.js";
-import {
   CommonModule,
   DomAdapter,
   PLATFORM_BROWSER_ID,
   getDOM,
   setRootDomAdapter
 } from "./chunk-WTKJ7EUB.js";
+import {
+  withHttpTransferCache
+} from "./chunk-SOPRF3UM.js";
 import {
   XhrFactory,
   parseCookieValue

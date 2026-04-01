@@ -63,6 +63,10 @@ export class ShipComponent {
   // ── Shared log ─────────────────────────────────────────────────────────
   log = signal<LogEntry[]>([]);
 
+  // ── AI commit message generation ───────────────────────────────────────
+  generating    = signal(false);
+  generateError = signal('');
+
   // ── Server health ──────────────────────────────────────────────────────
   serverOnline = signal(true);
 
@@ -153,6 +157,28 @@ export class ShipComponent {
     this.log.set([]);
     this.prResult.set(null);
     this.selectedId.set(null);
+  }
+
+  async generateMessage() {
+    if (!this.solutionFolder || this.generating()) return;
+    this.generating.set(true);
+    this.generateError.set('');
+    try {
+      const r = await fetch(`${GIT_SERVER_BASE}/api/git/generate-commit-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: this.solutionFolder }),
+      });
+      const data = await r.json();
+      if (r.ok && data.message) {
+        this.description = data.message;
+      } else {
+        this.generateError.set(data.error ?? 'Generation failed');
+      }
+    } catch {
+      this.generateError.set('Git server not reachable — restart with npm start');
+    }
+    this.generating.set(false);
   }
 
   // ══ ENTRY POINT ════════════════════════════════════════════════════════

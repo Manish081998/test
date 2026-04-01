@@ -52,8 +52,19 @@
       </div>
       <div class="field span4">
         <label>What did you change? <span class="hint">(becomes commit message &amp; PR title)</span></label>
-        <input [(ngModel)]="description" [disabled]="anyRunning()"
-          placeholder="e.g. Added InsertTicket POST endpoint with DTOs, service, and repository layers" />
+        <div class="input-with-btn">
+          <input [(ngModel)]="description" [disabled]="anyRunning()"
+            placeholder="e.g. Added InsertTicket POST endpoint with DTOs, service, and repository layers" />
+          <button class="btn-generate"
+            [disabled]="anyRunning() || generating() || !solutionFolder"
+            (click)="generateMessage()">
+            @if (generating()) { <span class="spin">⟳</span> Generating… }
+            @else { ✦ Generate }
+          </button>
+        </div>
+        @if (generateError()) {
+          <span class="generate-error">⚠ {{ generateError() }}</span>
+        }
       </div>
       <div class="field">
         <label>Source branch</label>

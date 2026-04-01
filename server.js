@@ -1,8 +1,9 @@
-const express = require('express');
-const cors    = require('cors');
+const express   = require('express');
+const cors      = require('cors');
 const { spawn } = require('child_process');
-const fs      = require('fs');
-const path    = require('path');
+const fs        = require('fs');
+const path      = require('path');
+const Anthropic  = require('@anthropic-ai/sdk');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -382,6 +383,58 @@ app.post('/api/dotnet/build', (req, res) => {
     else            send({ type: 'fatal', text: `dotnet build failed — exit code ${code}` });
     res.end();
   });
+});
+
+// ── /api/git/generate-commit-message ─────────────────────────────────────────
+app.post('/api/git/generate-commit-message', async (req, res) => {
+  const { folder } = req.body;
+  if (!folder) return res.status(400).json({ error: 'folder is required' });
+
+  const apiKey = serverConfig.anthropicApiKey;
+  if (!apiKey || apiKey.startsWith('sk-ant-...')) {
+    return res.status(400).json({ error: 'No Anthropic API key — add anthropicApiKey to server-config.json' });
+  }
+
+  try {
+    const [diff, status] = await Promise.all([
+      gitOutput(['diff', 'HEAD'], folder),
+      gitOutput(['status', '--short'], folder),
+    ]);
+
+    if (!status || status.trim() === '') {
+      return res.json({ message: 'No changes detected' });
+    }
+
+    const client = new Anthropic({ apiKey });
+    const diffText = diff ? diff.slice(0, 4000) : '';
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: `Generate a concise git commit message (max 72 chars) for these changes.
+
+Git status:
+${status}
+${diffText ? `\nGit diff (truncated):\n${diffText}` : ''}
+
+Rules:
+- Use conventional commit format: type(scope): description
+- Types: feat, fix, refactor, chore, docs, test, style
+- Be specific about what changed
+- No period at end
+- Return ONLY the commit message, nothing else`,
+      }],
+    });
+
+    const message = response.content[0]?.type === 'text'
+      ? response.content[0].text.trim()
+      : 'chore: update changes';
+    res.json({ message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Health check ──────────────────────────────────────────────────────────────
