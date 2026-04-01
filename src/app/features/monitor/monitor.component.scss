@@ -1,0 +1,141 @@
+.monitor { display: flex; flex-direction: column; gap: 16px; }
+
+.monitor-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 12px 16px;
+}
+.field-inline {
+  flex: 1; min-width: 200px;
+  input {
+    width: 100%; background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text-primary); padding: 7px 12px;
+    font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none;
+    &:focus { border-color: var(--blue-dim); }
+  }
+}
+.bar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.refresh-time { font-size: 11px; color: var(--text-dim); }
+.btn-refresh {
+  background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 14px; font-size: 12px; cursor: pointer;
+  &:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+  &:disabled { opacity: .4; cursor: not-allowed; }
+}
+.auto-toggle {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 10px;
+  border-radius: var(--radius); border: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
+  transition: all .15s;
+  &.on { border-color: var(--green-dim); color: var(--green); background: var(--green-bg); }
+  &:hover { background: var(--bg-hover); }
+}
+.toggle-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim);
+  .on & { background: var(--green); box-shadow: 0 0 0 0 rgba(63,185,80,.4); animation: pulse-green 1.5s infinite; }
+}
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 60px 20px; text-align: center;
+  .empty-icon { font-size: 32px; color: var(--text-dim); margin-bottom: 8px; }
+  strong { font-size: 15px; color: var(--text-muted); }
+  span { font-size: 13px; color: var(--text-dim); }
+}
+
+.repo-header {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+}
+.repo-name {
+  display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600;
+  a { color: var(--text-primary); text-decoration: none; &:hover { color: var(--blue); } }
+  svg { color: var(--text-muted); }
+}
+.repo-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.stats-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+.stat-card {
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 16px; display: flex; flex-direction: column; gap: 4px; align-items: center;
+}
+.stat-val {
+  font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  &.green { color: var(--green); }
+  &.red { color: var(--red); }
+  &.yellow { color: var(--yellow); }
+}
+.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.panel {
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 16px; display: flex; flex-direction: column; gap: 0;
+}
+.panel-title {
+  display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600;
+  color: var(--text-muted); margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.run-row, .pr-row, .commit-row, .branch-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--border-light);
+  &:last-child { border-bottom: none; }
+}
+.run-body, .pr-body, .commit-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.run-top, .pr-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.run-name { font-size: 13px; font-weight: 500; }
+.run-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 6px; flex-wrap: wrap; }
+.run-time { font-size: 11px; color: var(--text-dim); }
+.ext-link {
+  color: var(--text-dim); font-size: 13px; text-decoration: none; flex-shrink: 0;
+  &:hover { color: var(--blue); }
+}
+.pr-num { font-size: 12px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; padding-top: 2px; }
+.pr-title-link {
+  font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none;
+  &:hover { color: var(--blue); }
+}
+.pr-meta { display: flex; gap: 6px; align-items: center; }
+
+.avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+.avatar-placeholder {
+  width: 24px; height: 24px; border-radius: 50%; background: var(--bg-tertiary);
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+  color: var(--text-muted); flex-shrink: 0; font-weight: 600; text-transform: uppercase;
+}
+.commit-msg {
+  font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+  &:hover { color: var(--blue); }
+}
+.branch-row {
+  align-items: center; padding: 8px 0;
+  svg { color: var(--text-dim); flex-shrink: 0; }
+}
+.branch-name { flex: 1; font-size: 13px; font-weight: 500; }
+.sha-tag { color: var(--text-dim); margin-left: auto; }
+.empty-panel { color: var(--text-dim); font-size: 13px; padding: 12px 0; text-align: center; }
+.pulse { flex-shrink: 0; margin-top: 6px; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; border: 1px solid;
+}
+.badge.success { color: var(--green); background: var(--green-bg); border-color: var(--green-dim); }
+.badge.info    { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-dim); }
+.badge.error   { color: var(--red);   background: var(--red-bg);   border-color: var(--red-dim); }
+.badge.neutral { color: var(--text-muted); background: transparent; border-color: var(--border); }
+.badge.pending { color: var(--yellow); background: var(--yellow-bg); border-color: rgba(187,128,9,.3); }
+
+.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+.spin { display: inline-block; animation: sp .8s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@keyframes fi { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fi .3s ease; }

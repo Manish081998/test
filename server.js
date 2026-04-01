@@ -253,7 +253,67 @@ app.post('/api/git/push', async (req, res) => {
     }
   }
 
-  // ── 5. Git steps ─────────────────────────────────────────────────────────
+  // ── 5. Ensure source branch shares history with main ────────────────────
+  // GitHub refuses to create a PR if branches have no common ancestor.
+  // Fix: checkout source branch, then merge origin/main with --allow-unrelated-histories
+  // using -X ours so our project files always win over any conflicts (e.g. README.md).
+  await runGitCmd(['checkout', branch], folder, send);
+  const remoteMainExists = await remoteBranchExists('main', folder);
+  if (remoteMainExists) {
+    send({ type: 'stdout', text: `  → Merging origin/main into ${branch} to connect git histories...\n` });
+    await runGitCmd(
+      ['merge', 'origin/main', '--allow-unrelated-histories', '-X', 'ours', '--no-edit'],
+      folder, send
+    );
+    send({ type: 'stdout', text: '  ✓ Histories connected — PR creation will succeed\n' });
+  }
+
+  // ── 6. Auto-create CI workflow file if not already in the project ───────
+  // This ensures "CI / Build" check runs on every PR without needing the
+  // GitHub "workflow" token scope (git push works with repo scope only).
+  const workflowDir  = path.join(folder, '.github', 'workflows');
+  const workflowFile = path.join(workflowDir, 'build.yml');
+  if (!fs.existsSync(workflowFile)) {
+    fs.mkdirSync(workflowDir, { recursive: true });
+    const isDotnet = fs.readdirSync(folder).some(f => f.endsWith('.sln') || f.endsWith('.csproj'));
+    const buildStep = isDotnet
+      ? [
+          '      - uses: actions/setup-dotnet@v4',
+          '        with:',
+          "          dotnet-version: '8.x'",
+          '      - name: Build',
+          '        run: dotnet build',
+        ]
+      : [
+          '      - uses: actions/setup-node@v4',
+          '        with:',
+          "          node-version: '20'",
+          '      - name: Build',
+          '        run: |',
+          '          [ -f package-lock.json ] && npm ci || npm install',
+          '          npm run build --if-present',
+        ];
+    const yaml = [
+      'name: CI',
+      '',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '  push:',
+      '    branches: [development]',
+      '',
+      'jobs:',
+      '  Build:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - uses: actions/checkout@v4',
+      ...buildStep,
+    ].join('\n');
+    fs.writeFileSync(workflowFile, yaml, 'utf8');
+    send({ type: 'stdout', text: '  → Created .github/workflows/build.yml (CI workflow)\n' });
+  }
+
+  // ── 7. Git steps ─────────────────────────────────────────────────────────
   for (const step of STEPS) {
     const args = step.args(branch, message);
     send({ type: 'step-start', id: step.id, label: step.label, cmd: `git ${args.join(' ')}` });
