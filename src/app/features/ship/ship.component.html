@@ -31,7 +31,7 @@
       <div class="field span2">
         <label>Solution Folder <span class="hint">(where your .NET project lives)</span></label>
         <input [(ngModel)]="solutionFolder" [disabled]="anyRunning()"
-          placeholder="c:\Users\you\Projects\ClaudeDotNetCoreAPIExample" />
+          placeholder="c:\Users\you\Projects\" />
       </div>
       <div class="field span2">
         <label>Repository URL
@@ -54,6 +54,7 @@
         <label>What did you change? <span class="hint">(becomes commit message &amp; PR title)</span></label>
         <div class="input-with-btn">
           <input [(ngModel)]="description" [disabled]="anyRunning()"
+            (ngModelChange)="generateError.set('')"
             placeholder="e.g. Added InsertTicket POST endpoint with DTOs, service, and repository layers" />
           <button class="btn-generate"
             [disabled]="anyRunning() || generating() || !solutionFolder"
