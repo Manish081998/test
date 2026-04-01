@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { catchError, map, switchMap } from 'rxjs/operators';
 
 const BASE = 'https://api.github.com';
 const GQL  = 'https://api.github.com/graphql';
@@ -138,8 +138,8 @@ export class GithubService {
     );
   }
 
-  // Pushes .github/workflows/build.yml so the required "Build" status check runs on PRs.
-  // Auto-detects project type: runs dotnet build for .NET, npm build for Node/Angular.
+  // Upserts .github/workflows/build.yml — creates or updates so content is always current.
+  // Auto-detects project type at runtime: dotnet build for .NET, npm build for Angular/Node.
   createWorkflowFile(owner: string, repo: string, token: string): Observable<any> {
     const yaml = [
       'name: CI',
@@ -164,28 +164,36 @@ export class GithubService {
       '      - name: Build',
       '        run: |',
       '          if find . -maxdepth 4 \\( -name "*.sln" -o -name "*.csproj" \\) 2>/dev/null | grep -q .; then',
-      '            echo "Detected .NET project — running dotnet build"',
+      '            echo "Detected .NET project"',
       '            dotnet build',
       '          elif [ -f package.json ]; then',
-      '            echo "Detected Node.js project — running npm build"',
+      '            echo "Detected Node/Angular project"',
       '            [ -f package-lock.json ] && npm ci || npm install',
-      '            npm run build --if-present',
+      '            npm run build --if-present || echo "No build script, skipping"',
       '          else',
-      '            echo "No recognizable project type found — skipping build"',
+      '            echo "No recognizable project type — skipping build"',
       '          fi',
     ].join('\n');
     const content = btoa(unescape(encodeURIComponent(yaml)));
-    return this.http.put(
-      `${BASE}/repos/${owner}/${repo}/contents/.github/workflows/build.yml`,
-      { message: 'ci: add Build workflow for branch protection', content },
-      { headers: this.headers(token) }
-    ).pipe(catchError((err) => {
-      // 422 = file already exists (safe to ignore)
-      if (err?.status === 422) return of(null);
-      // 403 usually means token is missing "workflow" scope
-      if (err?.status === 403) throw new Error('Token missing "workflow" scope — edit token at github.com/settings/tokens and add the workflow scope');
-      throw err;
-    }));
+    const url = `${BASE}/repos/${owner}/${repo}/contents/.github/workflows/build.yml`;
+
+    // Get current file SHA (needed to update existing file), then upsert
+    return this.http.get<{ sha: string }>(url, { headers: this.headers(token) }).pipe(
+      catchError(() => of(null)),  // null = file doesn't exist yet
+      switchMap((existing: any) => this.http.put(
+        url,
+        {
+          message: 'ci: update Build workflow',
+          content,
+          ...(existing?.sha ? { sha: existing.sha } : {}),
+        },
+        { headers: this.headers(token) }
+      )),
+      catchError((err) => {
+        if (err?.status === 403) throw new Error('Token missing "workflow" scope — add it at github.com/settings/tokens');
+        throw err;
+      })
+    );
   }
 
   // Creates a new branch pointing at the given SHA.
