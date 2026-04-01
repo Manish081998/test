@@ -3,8 +3,19 @@
   <!-- Header bar -->
   <div class="monitor-bar">
     <div class="field-inline">
-      <input [(ngModel)]="repoUrl" placeholder="https://github.com/username/repo.git"
-             (ngModelChange)="onUrlChange()" />
+      @if (repos().length) {
+        <select [(ngModel)]="repoUrl" (ngModelChange)="onUrlChange()" class="repo-select">
+          <option value="" disabled>
+            @if (reposLoading()) { Loading repos… } @else { Select a repository… }
+          </option>
+          @for (r of repos(); track r.clone_url) {
+            <option [value]="r.clone_url">{{ r.full_name }}</option>
+          }
+        </select>
+      } @else {
+        <input [(ngModel)]="repoUrl" placeholder="https://github.com/username/repo.git"
+               (ngModelChange)="onUrlChange()" />
+      }
     </div>
     <div class="bar-right">
       @if (loading()) { <span class="spin" style="color:var(--blue)">⟳</span> }
@@ -96,7 +107,7 @@
               <div class="run-meta">
                 <span class="mono">{{ run.head_branch }}</span>
                 <span>·</span>
-                <span>{{ run.head_commit?.message | slice:0:50 }}</span>
+                <span>{{ run.head_commit.message | slice:0:50 }}</span>
               </div>
               <div class="run-time">{{ run.created_at | date:'MMM d, h:mm a' }}</div>
             </div>

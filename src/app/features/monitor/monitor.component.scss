@@ -7,11 +7,15 @@
 }
 .field-inline {
   flex: 1; min-width: 200px;
-  input {
+  input, .repo-select {
     width: 100%; background: var(--bg-primary); border: 1px solid var(--border);
     border-radius: var(--radius); color: var(--text-primary); padding: 7px 12px;
     font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none;
     &:focus { border-color: var(--blue-dim); }
+  }
+  .repo-select {
+    cursor: pointer;
+    option { background: #0d1117; color: var(--text-primary); }
   }
 }
 .bar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
