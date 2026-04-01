@@ -3,8 +3,19 @@
   <!-- Header bar -->
   <div class="monitor-bar">
     <div class="field-inline">
-      <input [(ngModel)]="repoUrl" placeholder="https://github.com/username/repo.git"
-             (ngModelChange)="onUrlChange()" />
+      @if (repos().length) {
+        <select [(ngModel)]="repoUrl" (ngModelChange)="onUrlChange()" class="repo-select">
+          <option value="" disabled>
+            @if (reposLoading()) { Loading repos… } @else { Select a repository… }
+          </option>
+          @for (r of repos(); track r.clone_url) {
+            <option [value]="r.clone_url">{{ r.full_name }}</option>
+          }
+        </select>
+      } @else {
+        <input [(ngModel)]="repoUrl" placeholder="https://github.com/username/repo.git"
+               (ngModelChange)="onUrlChange()" />
+      }
     </div>
     <div class="bar-right">
       @if (loading()) { <span class="spin" style="color:var(--blue)">⟳</span> }
@@ -85,27 +96,29 @@
           CI Runs
           @if (hasRunningCI()) { <span class="pulse yellow"></span> }
         </div>
-        @for (run of ciRuns(); track run.id) {
-          <div class="run-row fade-in">
-            <span class="pulse" [class]="runPulse(run)"></span>
-            <div class="run-body">
-              <div class="run-top">
-                <span class="run-name">{{ run.name }}</span>
-                <span class="badge" [class]="runBadge(run)">{{ runLabel(run) }}</span>
+        <div class="panel-scroll">
+          @for (run of ciRuns(); track run.id) {
+            <div class="run-row fade-in">
+              <span class="pulse" [class]="runPulse(run)"></span>
+              <div class="run-body">
+                <div class="run-top">
+                  <span class="run-name">{{ run.name }}</span>
+                  <span class="badge" [class]="runBadge(run)">{{ runLabel(run) }}</span>
+                </div>
+                <div class="run-meta">
+                  <span class="mono">{{ run.head_branch }}</span>
+                  <span>·</span>
+                  <span>{{ run.head_commit.message | slice:0:50 }}</span>
+                </div>
+                <div class="run-time">{{ run.created_at | date:'MMM d, h:mm a' }}</div>
               </div>
-              <div class="run-meta">
-                <span class="mono">{{ run.head_branch }}</span>
-                <span>·</span>
-                <span>{{ run.head_commit?.message | slice:0:50 }}</span>
-              </div>
-              <div class="run-time">{{ run.created_at | date:'MMM d, h:mm a' }}</div>
+              <a [href]="run.html_url" target="_blank" class="ext-link" title="View on GitHub">↗</a>
             </div>
-            <a [href]="run.html_url" target="_blank" class="ext-link" title="View on GitHub">↗</a>
-          </div>
-        }
-        @if (!ciRuns().length && !loading()) {
-          <div class="empty-panel">No CI runs found</div>
-        }
+          }
+          @if (!ciRuns().length && !loading()) {
+            <div class="empty-panel">No CI runs found</div>
+          }
+        </div>
       </div>
 
       <!-- Open PRs -->
@@ -116,24 +129,26 @@
           </svg>
           Open Pull Requests
         </div>
-        @for (pr of openPRs(); track pr.number) {
-          <div class="pr-row fade-in">
-            <div class="pr-num">#{{ pr.number }}</div>
-            <div class="pr-body">
-              <div class="pr-top">
-                <a [href]="pr.html_url" target="_blank" class="pr-title-link">{{ pr.title }}</a>
+        <div class="panel-scroll">
+          @for (pr of openPRs(); track pr.number) {
+            <div class="pr-row fade-in">
+              <div class="pr-num">#{{ pr.number }}</div>
+              <div class="pr-body">
+                <div class="pr-top">
+                  <a [href]="pr.html_url" target="_blank" class="pr-title-link">{{ pr.title }}</a>
+                </div>
+                <div class="pr-meta">
+                  <span class="mono">{{ pr.head.ref }} → {{ pr.base.ref }}</span>
+                  @if (pr.auto_merge) { <span class="badge success">auto-merge</span> }
+                </div>
+                <div class="run-time">{{ pr.created_at | date:'MMM d, h:mm a' }}</div>
               </div>
-              <div class="pr-meta">
-                <span class="mono">{{ pr.head.ref }} → {{ pr.base.ref }}</span>
-                @if (pr.auto_merge) { <span class="badge success">auto-merge</span> }
-              </div>
-              <div class="run-time">{{ pr.created_at | date:'MMM d, h:mm a' }}</div>
             </div>
-          </div>
-        }
-        @if (!openPRs().length && !loading()) {
-          <div class="empty-panel">No open pull requests</div>
-        }
+          }
+          @if (!openPRs().length && !loading()) {
+            <div class="empty-panel">No open pull requests</div>
+          }
+        </div>
       </div>
 
       <!-- Recent Commits -->
@@ -144,28 +159,30 @@
           </svg>
           Recent Commits · <span class="mono" style="font-size:11px">development</span>
         </div>
-        @for (c of commits(); track c.sha) {
-          <div class="commit-row fade-in">
-            @if (c.author?.avatar_url) {
-              <img [src]="c.author!.avatar_url" class="avatar" />
-            } @else {
-              <div class="avatar-placeholder">{{ c.commit.author.name[0] }}</div>
-            }
-            <div class="commit-body">
-              <a [href]="c.html_url" target="_blank" class="commit-msg">{{ c.commit.message | slice:0:60 }}</a>
-              <div class="run-time">
-                <span>{{ c.commit.author.name }}</span>
-                <span>·</span>
-                <span class="mono">{{ c.sha | slice:0:7 }}</span>
-                <span>·</span>
-                <span>{{ c.commit.author.date | date:'MMM d' }}</span>
+        <div class="panel-scroll">
+          @for (c of commits(); track c.sha) {
+            <div class="commit-row fade-in">
+              @if (c.author?.avatar_url) {
+                <img [src]="c.author!.avatar_url" class="avatar" />
+              } @else {
+                <div class="avatar-placeholder">{{ c.commit.author.name[0] }}</div>
+              }
+              <div class="commit-body">
+                <a [href]="c.html_url" target="_blank" class="commit-msg">{{ c.commit.message | slice:0:60 }}</a>
+                <div class="run-time">
+                  <span>{{ c.commit.author.name }}</span>
+                  <span>·</span>
+                  <span class="mono">{{ c.sha | slice:0:7 }}</span>
+                  <span>·</span>
+                  <span>{{ c.commit.author.date | date:'MMM d' }}</span>
+                </div>
               </div>
             </div>
-          </div>
-        }
-        @if (!commits().length && !loading()) {
-          <div class="empty-panel">No commits found</div>
-        }
+          }
+          @if (!commits().length && !loading()) {
+            <div class="empty-panel">No commits found</div>
+          }
+        </div>
       </div>
 
       <!-- Branches -->
@@ -176,6 +193,7 @@
           </svg>
           Branches
         </div>
+        <div class="panel-scroll">
         @for (b of branches(); track b.name) {
           <div class="branch-row fade-in">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -190,6 +208,7 @@
         @if (!branches().length && !loading()) {
           <div class="empty-panel">No branches found</div>
         }
+        </div>
       </div>
 
     </div>

@@ -54,6 +54,20 @@
   --radius-xl:    22px;
   --shadow:       0 8px 32px rgba(0,0,0,.6);
   --shadow-lg:    0 20px 60px rgba(0,0,0,.8);
+
+  /* ── Compat aliases (used by component SCSS) ── */
+  --bg-primary:   var(--bg-void);
+  --bg-secondary: var(--bg-surface);
+  --bg-tertiary:  var(--bg-elevated);
+  --border:       var(--border-dim);
+  --border-light: rgba(255,255,255,.04);
+  --blue:         var(--cyan);
+  --blue-dim:     var(--cyan-dim);
+  --blue-glow:    var(--cyan-glow);
+  --blue-bg:      var(--cyan-bg);
+  --yellow:       var(--gold);
+  --yellow-bg:    var(--gold-bg);
+  --yellow-dim:   var(--gold-dim);
 }
 
 html, body {

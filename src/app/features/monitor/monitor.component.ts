@@ -1,4 +1,4 @@
-import { Component, input, signal, OnDestroy, inject } from '@angular/core';
+import { Component, input, signal, OnDestroy, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription, interval } from 'rxjs';
@@ -18,8 +18,10 @@ export class MonitorComponent implements OnDestroy {
 
   token = input('');
 
-  repoUrl     = '';
-  loading     = signal(false);
+  repoUrl      = '';
+  repos        = signal<{ full_name: string; clone_url: string }[]>([]);
+  reposLoading = signal(false);
+  loading      = signal(false);
   autoRefresh = signal(false);
   lastRefresh = signal('');
   repoInfo    = signal<RepoInfo | null>(null);
@@ -29,6 +31,21 @@ export class MonitorComponent implements OnDestroy {
   branches    = signal<Branch[]>([]);
 
   private sub?: Subscription;
+
+  constructor() {
+    effect(() => {
+      const t = this.token();
+      if (!t) return;
+      this.reposLoading.set(true);
+      this.gh.getUserRepos(t).subscribe({
+        next:  rs => {
+          this.repos.set(rs.map(r => ({ full_name: r.full_name, clone_url: r.clone_url })));
+          this.reposLoading.set(false);
+        },
+        error: () => this.reposLoading.set(false),
+      });
+    });
+  }
 
   ngOnDestroy() { this.sub?.unsubscribe(); }
 
